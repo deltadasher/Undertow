@@ -1,0 +1,10 @@
+{
+  "name": "Procmon",
+  "entry": "index.html",
+  "feeds": ["stats"],
+  "props": {
+    "accent": { "type": "color", "text": "Accent colour", "value": "#5fd7a7" },
+    "warn": { "type": "color", "text": "High-load colour", "value": "#ff6b5e" },
+    "scale": { "type": "slider", "text": "Text size", "value": 1, "min": 0.6, "max": 2, "step": 0.05 }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Life",
+  "entry": "index.html",
+  "props": {
+    "cell": { "type": "slider", "text": "Cell size (px)", "value": 9, "min": 4, "max": 30, "step": 1 },
+    "speed": { "type": "slider", "text": "Generations per second", "value": 12, "min": 1, "max": 60, "step": 1 },
+    "hue": { "type": "slider", "text": "Colour hue", "value": 165, "min": 0, "max": 360, "step": 1 }
+  }
+}

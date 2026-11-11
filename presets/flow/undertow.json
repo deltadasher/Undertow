@@ -1,0 +1,11 @@
+{
+  "name": "Flow",
+  "entry": "index.html",
+  "props": {
+    "count": { "type": "slider", "text": "Particle count", "value": 2500, "min": 200, "max": 12000, "step": 100 },
+    "speed": { "type": "slider", "text": "Speed", "value": 1, "min": 0.1, "max": 4, "step": 0.1 },
+    "hue": { "type": "slider", "text": "Base hue", "value": 205, "min": 0, "max": 360, "step": 1 },
+    "spread": { "type": "slider", "text": "Hue spread", "value": 70, "min": 0, "max": 360, "step": 5 },
+    "fade": { "type": "slider", "text": "Trail fade (lower = longer trails)", "value": 0.045, "min": 0.01, "max": 0.3, "step": 0.005 }
+  }
+}

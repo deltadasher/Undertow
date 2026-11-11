@@ -1,0 +1,159 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Procmon</title>
+<style>
+  :root { --accent: #5fd7a7; --warn: #ff6b5e; --dim: #5d6b7a; --fg: #c9d4df; --bg: #080b0f; --line: #17202a; --scale: 1; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+    font: calc(clamp(13px, 0.8vw, 24px) * var(--scale)) / 1.45 "JetBrains Mono", "Fira Code", "Hack", "DejaVu Sans Mono", monospace; }
+  body { display: grid; place-items: center; }
+  main { width: min(92vw, 92em); display: grid; gap: 1.1em;
+    grid-template-columns: 1.15fr 1fr; grid-template-areas: "head head" "cores hist" "cores mem" "procs net"; }
+  section { border: 1px solid var(--line); padding: 0.9em 1.1em; min-width: 0; background: #0a0e13; }
+  h2 { margin: 0 0 0.6em; font-size: 0.8em; font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+  h2 b { float: right; font-weight: 400; color: var(--fg); letter-spacing: 0; text-transform: none; }
+  #head { grid-area: head; display: flex; gap: 2em; align-items: baseline; border-color: transparent; background: none; padding: 0 0.2em; }
+  #head .host { color: var(--accent); font-size: 1.5em; }
+  #head .right { margin-left: auto; text-align: right; }
+  #head .clock { font-size: 1.5em; }
+  .dim { color: var(--dim); }
+  #cores { grid-area: cores; }
+  .core { display: grid; grid-template-columns: 3.2em 1fr 3.4em; gap: 0.7em; align-items: center; height: 1.45em; }
+  .core .n { color: var(--dim); }
+  .core .v { text-align: right; }
+  .bar { height: 0.55em; background: var(--line); position: relative; overflow: hidden; }
+  .bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); width: 0; transition: width 0.9s linear, background 0.9s; }
+  #hist { grid-area: hist; } #mem { grid-area: mem; } #net { grid-area: net; } #procs { grid-area: procs; }
+  canvas { display: block; width: 100%; height: 8.5em; }
+  .row { display: grid; grid-template-columns: 3.2em 1fr 11em; gap: 0.7em; align-items: center; height: 1.6em; }
+  .row .v { text-align: right; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th { text-align: left; font-weight: 400; color: var(--dim); padding-bottom: 0.3em; }
+  td, th { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .num { text-align: right; width: 5.5em; } .pid { width: 5em; }
+  tr.hot td { color: var(--warn); }
+</style>
+<main>
+  <section id="head">
+    <span class="host" id="host">localhost</span>
+    <span class="dim" id="kernel"></span>
+    <span class="right"><span class="clock" id="clock"></span><br><span class="dim" id="uptime"></span></span>
+  </section>
+  <section id="cores"><h2>cpu cores <b id="cpuTotal"></b></h2><div id="coreList"></div></section>
+  <section id="hist"><h2>cpu history <b id="load"></b></h2><canvas id="cpuGraph"></canvas></section>
+  <section id="mem"><h2>memory</h2>
+    <div class="row"><span class="dim">ram</span><div class="bar"><i id="ramBar"></i></div><span class="v" id="ramText"></span></div>
+    <div class="row"><span class="dim">swap</span><div class="bar"><i id="swapBar"></i></div><span class="v" id="swapText"></span></div>
+  </section>
+  <section id="procs"><h2>processes <b id="nprocs"></b></h2>
+    <table><thead><tr><th class="pid">pid</th><th>name</th><th class="num">cpu%</th><th class="num">mem</th></tr></thead><tbody id="procBody"></tbody></table>
+  </section>
+  <section id="net"><h2>network <b id="netText"></b></h2><canvas id="netGraph"></canvas></section>
+</main>
+<script>
+// Procmon: a live system monitor fed by undertow's "stats" feed (/proc sampled once a second).
+const $ = id => document.getElementById(id);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const HIST = 120;
+const cpuHist = [], rxHist = [], txHist = [];
+
+const bytes = (kb) => kb >= 1048576 ? (kb / 1048576).toFixed(1) + 'G' : kb >= 1024 ? (kb / 1024).toFixed(0) + 'M' : kb.toFixed(0) + 'K';
+const rate = (b) => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB/s' : b >= 1024 ? (b / 1024).toFixed(0) + ' kB/s' : b.toFixed(0) + ' B/s';
+function uptime(s) {
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return 'up ' + (d ? d + 'd ' : '') + h + 'h ' + String(m).padStart(2, '0') + 'm';
+}
+function push(arr, v) { arr.push(v); if (arr.length > HIST) arr.shift(); }
+function setBar(el, frac) {
+  el.style.width = (Math.max(0, Math.min(1, frac)) * 100).toFixed(1) + '%';
+  el.style.background = frac > 0.85 ? 'var(--warn)' : 'var(--accent)';
+}
+
+function graph(canvas, series, max) {
+  const dpr = Math.min(devicePixelRatio || 1, 2), w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  g.strokeStyle = css('--line'); g.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(0, h * i / 4 + 0.5); g.lineTo(w, h * i / 4 + 0.5); g.stroke(); }
+  for (const { data, color, fill } of series) {
+    if (data.length < 2) continue;
+    const x = i => w - (data.length - 1 - i) * (w / (HIST - 1));
+    const y = v => h - 1 - Math.min(1, v / max) * (h - 3);
+    g.beginPath();
+    data.forEach((v, i) => i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v)));
+    g.strokeStyle = color; g.lineWidth = 1.5; g.stroke();
+    if (fill) { g.lineTo(w, h); g.lineTo(x(0), h); g.closePath(); g.globalAlpha = 0.13; g.fillStyle = color; g.fill(); g.globalAlpha = 1; }
+  }
+}
+
+function render(s) {
+  $('host').textContent = s.host;
+  $('kernel').textContent = 'linux ' + s.kernel + (s.temp ? '  ·  ' + s.temp.toFixed(0) + '°C' : '');
+  $('uptime').textContent = uptime(s.uptime);
+  $('cpuTotal').textContent = (s.cpu.total * 100).toFixed(0) + '%';
+  $('load').textContent = 'load ' + s.load.map(v => v.toFixed(2)).join(' ');
+
+  const list = $('coreList');
+  while (list.children.length < s.cpu.cores.length) {
+    const row = document.createElement('div');
+    row.className = 'core';
+    row.innerHTML = `<span class="n">cpu${list.children.length}</span><div class="bar"><i></i></div><span class="v"></span>`;
+    list.appendChild(row);
+  }
+  s.cpu.cores.forEach((v, i) => {
+    const row = list.children[i];
+    setBar(row.querySelector('i'), v);
+    row.querySelector('.v').textContent = (v * 100).toFixed(0) + '%';
+  });
+
+  setBar($('ramBar'), s.mem.used / s.mem.total);
+  $('ramText').textContent = bytes(s.mem.used) + ' / ' + bytes(s.mem.total);
+  setBar($('swapBar'), s.mem.swapTotal ? s.mem.swapUsed / s.mem.swapTotal : 0);
+  $('swapText').textContent = s.mem.swapTotal ? bytes(s.mem.swapUsed) + ' / ' + bytes(s.mem.swapTotal) : 'none';
+
+  $('nprocs').textContent = s.nprocs + ' running';
+  $('procBody').replaceChildren(...s.procs.map(p => {
+    const tr = document.createElement('tr');
+    if (p.cpu > 80) tr.className = 'hot';
+    for (const [cls, text] of [['pid', p.pid], ['', p.name], ['num', p.cpu.toFixed(1)], ['num', bytes(p.mem)]]) {
+      const td = document.createElement('td');
+      td.className = cls; td.textContent = text;
+      tr.appendChild(td);
+    }
+    return tr;
+  }));
+
+  push(cpuHist, s.cpu.total); push(rxHist, s.net.rx); push(txHist, s.net.tx);
+  $('netText').textContent = '↓ ' + rate(s.net.rx) + '   ↑ ' + rate(s.net.tx);
+  draw();
+}
+
+function draw() {
+  const accent = css('--accent'), warn = css('--warn');
+  graph($('cpuGraph'), [{ data: cpuHist, color: accent, fill: true }], 1);
+  graph($('netGraph'), [{ data: rxHist, color: accent, fill: true }, { data: txHist, color: warn }],
+        Math.max(16384, ...rxHist, ...txHist) * 1.15);
+}
+
+function tickClock() { $('clock').textContent = new Date().toLocaleTimeString([], { hour12: false }); }
+setInterval(tickClock, 1000); tickClock();
+addEventListener('resize', draw);
+
+if (window.undertow) {
+  undertow.on('stats', render);
+  undertow.on('prop', ({ name, value }) => { document.documentElement.style.setProperty('--' + name, value); draw(); });
+} else {
+  // Opened in a normal browser: fake numbers so the layout can be worked on.
+  const n = navigator.hardwareConcurrency || 8; let t = 0;
+  setInterval(() => {
+    t++;
+    const cores = Array.from({ length: n }, (_, i) => 0.5 + 0.5 * Math.sin(t / 7 + i * 1.3) * Math.random());
+    render({ host: 'demo', kernel: '0.0.0-browser', uptime: 4000 + t, temp: 48, load: [1.2, 0.9, 0.7], nprocs: 312,
+      cpu: { total: cores.reduce((a, b) => a + b) / n, cores }, mem: { total: 32e6, used: 11e6 + 1e6 * Math.sin(t / 9), swapTotal: 8e6, swapUsed: 2e5 },
+      net: { rx: 4e5 * Math.random(), tx: 6e4 * Math.random() },
+      procs: ['firefox', 'kwin_wayland', 'plasmashell', 'cc1plus', 'pipewire', 'konsole'].map((name, i) => ({ pid: 900 + i * 37, name, cpu: 90 * Math.random() / (i + 1), mem: 9e5 / (i + 1) })) });
+  }, 1000);
+}
+</script>

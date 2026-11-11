@@ -1,0 +1,99 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Life</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #06080c; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+<canvas id="c"></canvas>
+<script>
+// Conway's Game of Life on a wrapping grid. Cells brighten when born and cool
+// as they age; moving the pointer seeds new cells, clicking drops a glider gun's worth of noise.
+const canvas = document.getElementById('c');
+const g = canvas.getContext('2d');
+const cfg = { cell: 9, speed: 12, hue: 165 };
+
+let cols = 0, rows = 0, cur, next, age;
+let stagnant = 0, lastPop = -1;
+
+function reset() {
+  canvas.width = innerWidth; canvas.height = innerHeight;
+  cols = Math.ceil(innerWidth / cfg.cell); rows = Math.ceil(innerHeight / cfg.cell);
+  cur = new Uint8Array(cols * rows); next = new Uint8Array(cols * rows); age = new Uint16Array(cols * rows);
+  for (let i = 0; i < cur.length; i++) cur[i] = Math.random() < 0.18 ? 1 : 0;
+}
+
+function sprinkle(cx, cy, radius, chance) {
+  for (let dy = -radius; dy <= radius; dy++)
+    for (let dx = -radius; dx <= radius; dx++)
+      if (dx * dx + dy * dy <= radius * radius && Math.random() < chance)
+        cur[((cy + dy + rows) % rows) * cols + (cx + dx + cols) % cols] = 1;
+}
+
+function step() {
+  let pop = 0;
+  for (let y = 0; y < rows; y++) {
+    const up = ((y - 1 + rows) % rows) * cols, mid = y * cols, down = ((y + 1) % rows) * cols;
+    for (let x = 0; x < cols; x++) {
+      const l = (x - 1 + cols) % cols, r = (x + 1) % cols;
+      const n = cur[up + l] + cur[up + x] + cur[up + r] + cur[mid + l] + cur[mid + r] + cur[down + l] + cur[down + x] + cur[down + r];
+      const i = mid + x, alive = n === 3 || (n === 2 && cur[i]) ? 1 : 0;
+      next[i] = alive;
+      age[i] = alive ? Math.min(age[i] + 1, 400) : 0;
+      pop += alive;
+    }
+  }
+  [cur, next] = [next, cur];
+
+  // When the board settles into still lifes and blinkers, stir it up again.
+  stagnant = Math.abs(pop - lastPop) <= 2 ? stagnant + 1 : 0;
+  lastPop = pop;
+  if (stagnant > 90 || pop < cur.length * 0.01) {
+    for (let k = 0; k < 6; k++) sprinkle(Math.random() * cols | 0, Math.random() * rows | 0, 7, 0.4);
+    stagnant = 0;
+  }
+}
+
+function draw() {
+  g.fillStyle = '#06080c';
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  const size = cfg.cell, pad = size > 5 ? 1 : 0;
+  // Bucket by age so fillStyle only changes a handful of times per frame.
+  const buckets = [[], [], [], [], []];
+  for (let i = 0; i < cur.length; i++) {
+    if (!cur[i]) continue;
+    const a = age[i];
+    buckets[a < 2 ? 0 : a < 6 ? 1 : a < 20 ? 2 : a < 80 ? 3 : 4].push(i);
+  }
+  const styles = [[60, 85, 78], [30, 80, 62], [0, 70, 46], [-20, 55, 32], [-40, 40, 20]];
+  buckets.forEach((cells, b) => {
+    const [shift, sat, light] = styles[b];
+    g.fillStyle = `hsl(${(cfg.hue + shift + 360) % 360} ${sat}% ${light}%)`;
+    for (const i of cells) g.fillRect((i % cols) * size, (i / cols | 0) * size, size - pad, size - pad);
+  });
+}
+
+let acc = 0, last = performance.now();
+function frame(now) {
+  acc += Math.min(0.25, (now - last) / 1000) * cfg.speed;
+  last = now;
+  let steps = 0;
+  while (acc >= 1 && steps++ < 4) { step(); acc -= 1; }
+  if (acc > 1) acc = 0;
+  draw();
+  requestAnimationFrame(frame);
+}
+
+addEventListener('resize', reset);
+addEventListener('mousemove', e => sprinkle(e.clientX / cfg.cell | 0, e.clientY / cfg.cell | 0, 2, 0.5));
+addEventListener('mousedown', e => sprinkle(e.clientX / cfg.cell | 0, e.clientY / cfg.cell | 0, 10, 0.45));
+
+window.undertow?.on('prop', ({ name, value }) => {
+  if (!(name in cfg) || cfg[name] === value) return;
+  cfg[name] = value;
+  if (name === 'cell') reset();
+});
+
+reset();
+requestAnimationFrame(frame);
+</script>

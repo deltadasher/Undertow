@@ -1,58 +1,64 @@
 # undertow
 
 Interactive web wallpapers for Wayland. A wallpaper is just a web page (canvas, WebGL, plain DOM);
-undertow renders it with QtWebEngine (Chromium) on the compositor's background layer via
-`wlr-layer-shell`, one surface per monitor.
+undertow renders it with Chromium (QtWebEngine) on the compositor's background layer via
+`wlr-layer-shell`, one surface per monitor, and runs as a tray app with a picker window.
 
 Works on compositors that implement layer-shell: **niri, Hyprland, KDE Plasma, sway, river**. Not GNOME.
 
+Written in Rust. The windows, picker and tray are QML, bound with [cxx-qt](https://github.com/KDAB/cxx-qt);
+one ~30-line C++ file starts the Qt application.
+
 ## Build
 
-Needs Qt 6 (base, webengine), LayerShellQt, CMake, a C++20 compiler, and `git` at runtime.
+Needs Rust, a C++ compiler, Qt 6 (base, declarative, webengine), LayerShellQt, and `git` at runtime.
 
 ```bash
 # Arch
-sudo pacman -S --needed qt6-base qt6-webengine layer-shell-qt cmake ninja git
+sudo pacman -S --needed rust qt6-base qt6-declarative qt6-webengine layer-shell-qt git
 
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-sudo cmake --install build      # optional; build/undertow also runs in place
+cargo build --release
+# the result is one self-contained binary: target/release/undertow
 ```
+
+Copy it anywhere on your `PATH` (`cargo install --path .` works too). Presets are embedded in the binary.
 
 ## Use
 
-```bash
-undertow list                 # what's installed
-undertow set snow             # switch wallpaper; starts the daemon if it isn't running
-undertow props                # settings of the current wallpaper
-undertow prop density 900     # change one live (remembered per wallpaper)
-undertow quit
-```
+Run `undertow`. The picker opens: click a wallpaper to apply it, adjust its settings in the side
+panel, paste `owner/repo` or a GitHub URL to install one. Closing the window leaves undertow
+running in the system tray; the tray icon reopens the picker, pauses, or quits.
 
-Autostart: run `undertow run` from your compositor config
-(`spawn-at-startup "undertow" "run"` in niri, `exec-once = undertow run` in Hyprland,
-or an autostart entry in Plasma).
+Tick **Start at login** in the picker and undertow starts itself in the tray on every login,
+with no shell or compositor config involved. **Show in app launcher** adds a menu entry.
 
-### Wallpapers from GitHub
+On niri/Hyprland the tray icon needs a bar with a tray (e.g. waybar); running `undertow` again
+always reopens the picker either way.
 
-Any repository that contains a web page works:
+### Command line (optional)
 
 ```bash
+undertow --background         # start in the tray without opening the picker
+undertow list
+undertow set snow             # starts undertow if it isn't running
+undertow props
+undertow prop density 900     # change a setting live
 undertow add owner/repo
 undertow add owner/repo/path/to/page          # page in a subdirectory
 undertow add owner/repo@branch
 undertow add https://github.com/owner/repo/tree/main/demo
 undertow add ~/code/my-wallpaper              # symlink a local directory (for development)
-undertow update                               # git pull everything
-undertow remove repo
+undertow update [id]
+undertow remove <id>
+undertow pause | resume | reload | quit
 ```
 
-They land in `~/.local/share/undertow/wallpapers/<id>/`. Projects that need a build step
-(npm, etc.) have to be built first; then point `"entry"` in that directory's `undertow.json`
-at the built `index.html`. `undertow set https://example.com` shows a live URL instead.
+Installed wallpapers live in `~/.local/share/undertow/wallpapers/<id>/`. Projects that need a
+build step (npm etc.) can't be installed directly; build them, then `undertow add` the output
+directory. `undertow set https://example.com` shows a live URL.
 
-Lively Wallpaper packages work as they are: `LivelyInfo.json` and `LivelyProperties.json`
-are read, and `livelyPropertyListener(name, value)` is called for every setting.
+Lively Wallpaper packages work as they are: `LivelyInfo.json` and `LivelyProperties.json` are
+read, and `livelyPropertyListener(name, value)` is called for every setting.
 
 ## Built-in presets
 
@@ -75,31 +81,50 @@ A directory with an `index.html`. Optional `undertow.json`:
   "props": {
     "speed": { "type": "slider", "text": "Speed", "value": 1, "min": 0, "max": 5, "step": 0.1 },
     "glow":  { "type": "checkbox", "text": "Glow", "value": true },
-    "tint":  { "type": "color", "text": "Tint", "value": "#88ccff" }
+    "tint":  { "type": "color", "text": "Tint", "value": "#88ccff" },
+    "mode":  { "type": "dropdown", "text": "Mode", "value": 0, "items": ["calm", "wild"] },
+    "label": { "type": "textbox", "text": "Caption", "value": "" }
   }
 }
 ```
 
-undertow injects a small `window.undertow` object before the page's own scripts run:
+`props` become controls in the picker. undertow injects a small `window.undertow` object before
+the page's own scripts run:
 
 ```js
-undertow.on('prop', ({ name, value }) => { /* called once per prop on load, then on every change */ });
+undertow.on('prop', ({ name, value }) => { /* once per prop on load, then on every change */ });
 undertow.on('stats', s => { /* once a second, only with "feeds": ["stats"] */ });
 ```
 
 `stats` is `{ cpu: { total, cores[] } (0..1), mem: { total, used, swapTotal, swapUsed } (kB),
-net: { rx, tx } (bytes/s), load[3], uptime (s), temp (°C, if found), host, kernel, nprocs,
+net: { rx, tx } (bytes/s), load[3], uptime (s), temp (°C or null), host, kernel, nprocs,
 procs: [{ pid, name, cpu (% of one core), mem (kB) }] }`.
 
-Pages are served from `undertow://<id>/`, so `fetch()` and ES modules work. Guard with
+Each wallpaper is served from its own origin, `http://<id>.localhost:<port>/`, by a loopback-only
+server inside undertow, so `fetch()`, ES modules and absolute paths work. Guard with
 `window.undertow?.on(...)` and the page also runs in a normal browser while you work on it.
+
+## Layout
+
+```
+src/main.rs      CLI and startup
+src/backend.rs   the Backend QML singleton (cxx-qt bridge)
+src/library.rs   wallpaper discovery, manifests, git install/update/remove
+src/server.rs    loopback file server
+src/stats.rs     /proc sampler
+src/config.rs    paths and config.json
+src/ipc.rs       CLI <-> daemon socket, single-instance lock
+src/desktop.rs   autostart and launcher entries
+qml/             Main (state, tray), WallWindow (layer-shell web view), Picker, PropEditor
+cpp/shim.cpp     QApplication startup
+presets/         built-in wallpapers
+```
 
 ## Notes and limits
 
 - **Plasma:** undertow sits on top of Plasma's own desktop layer, so desktop icons and the
-  desktop right-click menu are covered while it runs. Panels and windows are unaffected.
+  desktop right-click menu are covered while it runs. Pause or quit to get them back.
 - No automatic pause when a fullscreen window covers the wallpaper yet.
 - Audio is muted; there is no audio-reactive feed yet.
-- Settings are CLI-only for now (`undertow props` / `undertow prop`).
-- Third-party wallpapers are ordinary web content running in Chromium's sandbox. They can make
-  network requests like any web page, so install ones you'd be happy to open in a browser.
+- Third-party wallpapers are ordinary web content in Chromium's sandbox. They can make network
+  requests like any web page, so install ones you'd be happy to open in a browser.

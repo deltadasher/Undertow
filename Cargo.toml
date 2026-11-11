@@ -1,0 +1,18 @@
+[package]
+name = "undertow"
+version = "0.2.0"
+edition = "2021"
+description = "Interactive web wallpapers for Wayland"
+
+[dependencies]
+cxx = "1"
+cxx-qt = "0.10"
+cxx-qt-lib = "0.10"
+serde_json = "1"
+
+[build-dependencies]
+cxx-qt-build = "0.10"
+
+[profile.release]
+opt-level = 2
+strip = true

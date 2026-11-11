@@ -130,7 +130,7 @@ QtObject {
         const arg = space < 0 ? "" : line.slice(space + 1).trim()
         switch (cmd) {
         case "show": showPicker(); break
-        case "set": refresh(); apply(arg); break
+        case "set": refresh(); apply(arg); paused = false; break
         case "refresh": refresh(); break
         case "refresh-props": reloadProps(); break
         case "reload": reloadViews(); break
@@ -162,7 +162,7 @@ QtObject {
     property Picker picker: Picker { ctl: app }
 
     property Platform.SystemTrayIcon tray: Platform.SystemTrayIcon {
-        visible: true
+        visible: !Backend.headless()
         icon.source: "qrc:/qt/qml/dev/undertow/assets/undertow.svg"
         tooltip: "undertow: " + (app.current ? app.current.title : app.currentId)
         onActivated: reason => {

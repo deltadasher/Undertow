@@ -14,6 +14,8 @@ use std::time::Duration;
 
 /// Set by `main` before the QML engine starts.
 pub static START_HIDDEN: AtomicBool = AtomicBool::new(false);
+/// No tray icon: a host shell is providing the interface.
+pub static HEADLESS: AtomicBool = AtomicBool::new(false);
 pub static LISTENER: Mutex<Option<UnixListener>> = Mutex::new(None);
 
 #[cxx_qt::bridge]
@@ -46,6 +48,8 @@ pub mod qobject {
         fn set_current(self: &Backend, id: &QString);
         #[qinvokable]
         fn start_hidden(self: &Backend) -> bool;
+        #[qinvokable]
+        fn headless(self: &Backend) -> bool;
 
         /// JSON object of a wallpaper's property values (defaults + saved).
         #[qinvokable]
@@ -169,6 +173,10 @@ impl qobject::Backend {
 
     fn start_hidden(&self) -> bool {
         START_HIDDEN.load(Ordering::Relaxed)
+    }
+
+    fn headless(&self) -> bool {
+        HEADLESS.load(Ordering::Relaxed)
     }
 
     fn prop_values(&self, id: &QString) -> QString {

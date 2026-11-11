@@ -22,8 +22,10 @@ undertow - interactive web wallpapers for Wayland (niri, Hyprland, Plasma, sway)
 
   undertow                         open the wallpaper picker
   undertow --background            start in the tray without opening the picker
+  undertow --headless              start with no tray icon and no picker, for shells
+                                   that provide their own interface (also: set <id> --headless)
 
-  undertow list                    show installed wallpapers
+  undertow list [--json]           show installed wallpapers (--json adds settings and thumbnails)
   undertow set <id|https://url>    switch wallpaper (starts undertow if needed)
   undertow add <source>            install from GitHub or link a local directory
                                      owner/repo   owner/repo/sub/dir   owner/repo@branch
@@ -45,7 +47,8 @@ fn is_url(s: &str) -> bool {
 }
 
 /// Runs the Qt application. Returns when the user quits.
-fn run_daemon(show_picker: bool) -> ExitCode {
+fn run_daemon(show_picker: bool, headless: bool) -> ExitCode {
+    backend::HEADLESS.store(headless, Ordering::Relaxed);
     let listener = match ipc::bind() {
         Ok(l) => l,
         Err(e) => return fail(e),
@@ -63,10 +66,10 @@ fn run_daemon(show_picker: bool) -> ExitCode {
 }
 
 /// Starts a detached daemon and returns immediately.
-fn spawn_background() -> Result<(), String> {
+fn spawn_background(headless: bool) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     Command::new(exe)
-        .arg("--background")
+        .arg(if headless { "--headless" } else { "--background" })
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -82,6 +85,25 @@ fn forward(line: &str) -> ExitCode {
     }
 }
 
+/// Everything a host shell needs to present the library itself.
+fn cmd_list_json() -> ExitCode {
+    library::unpack_presets();
+    let current = config::current();
+    let list: Vec<Value> = library::all()
+        .iter()
+        .map(|w| {
+            let thumb = config::thumb_dir().join(format!("{}.png", w.id));
+            let mut entry = w.to_json();
+            entry["values"] = Value::Object(w.prop_values());
+            entry["thumb"] = Value::String(if thumb.is_file() { thumb.to_string_lossy().into() } else { String::new() });
+            entry["current"] = Value::Bool(w.id == current);
+            entry
+        })
+        .collect();
+    println!("{}", serde_json::json!({ "running": ipc::is_running(), "current": current, "wallpapers": list }));
+    ExitCode::SUCCESS
+}
+
 fn cmd_list() -> ExitCode {
     library::unpack_presets();
     let current = config::current();
@@ -92,7 +114,7 @@ fn cmd_list() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn cmd_set(target: &str) -> ExitCode {
+fn cmd_set(target: &str, headless: bool) -> ExitCode {
     library::unpack_presets();
     if target.is_empty() || (!is_url(target) && library::find(target).is_none()) {
         return fail(format!("no wallpaper '{target}' (see: undertow list)"));
@@ -102,7 +124,7 @@ fn cmd_set(target: &str) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     config::set_current(target);
-    match spawn_background() {
+    match spawn_background(headless) {
         Ok(()) => {
             println!("started undertow with {target}");
             ExitCode::SUCCESS
@@ -163,8 +185,11 @@ fn report(result: Result<String, String>) -> ExitCode {
 }
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let cmd = args.first().map(String::as_str).unwrap_or("");
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let headless = args.iter().any(|a| a == "--headless");
+    let json = args.iter().any(|a| a == "--json");
+    args.retain(|a| a != "--headless" && a != "--json");
+    let cmd = args.first().map(String::as_str).unwrap_or(if headless { "--background" } else { "" });
     let rest = args.get(1..).unwrap_or_default().join(" ");
 
     match cmd {
@@ -172,15 +197,16 @@ fn main() -> ExitCode {
             if ipc::send("show").is_some() {
                 return ExitCode::SUCCESS; // already running: just raise the picker
             }
-            run_daemon(true)
+            run_daemon(true, false)
         }
-        "--background" | "daemon" | "run" => run_daemon(false),
+        "--background" | "daemon" | "run" => run_daemon(false, headless),
         "help" | "-h" | "--help" => {
             print!("{USAGE}");
             ExitCode::SUCCESS
         }
+        "list" if json => cmd_list_json(),
         "list" => cmd_list(),
-        "set" => cmd_set(&rest),
+        "set" => cmd_set(&rest, headless),
         "add" if !rest.is_empty() => report(library::add(&rest).map(|id| format!("installed {id}\n  undertow set {id}"))),
         "update" => report(library::update(&rest)),
         "remove" if !rest.is_empty() => report(library::remove(&rest)),

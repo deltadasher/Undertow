@@ -39,6 +39,8 @@ always reopens the picker either way.
 
 ```bash
 undertow --background         # start in the tray without opening the picker
+undertow --headless           # no tray and no picker, for shells with their own interface
+undertow list --json          # library, settings, thumbnails and state for such shells
 undertow list
 undertow set snow             # starts undertow if it isn't running
 undertow props

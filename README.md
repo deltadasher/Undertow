@@ -81,6 +81,8 @@ read, and `livelyPropertyListener(name, value)` is called for every setting.
 | `constellation` | drifting points that link to every neighbour in reach, forming and dissolving figures | the pointer links to nearby stars, click pushes them apart |
 | `aurora` | two rayed aurora curtains over a starry sky | curtains lift toward the pointer, click for a surge |
 | `orrery` | bodies on Keplerian orbits with fading trails around a central star | the system leans toward the pointer, click launches a comet |
+| `ink` | white ink sinking and curling through black water (GPU fluid simulation; can be inverted) | drag to stir and trail ink, click to let a large drop go |
+| `overview` | time and date, weather for a city you name, CPU, memory, network and the busiest processes | - |
 
 ## Writing a wallpaper
 
@@ -141,3 +143,6 @@ presets/         built-in wallpapers
 - Audio is muted; there is no audio-reactive feed yet.
 - Third-party wallpapers are ordinary web content in Chromium's sandbox. They can make network
   requests like any web page, so install ones you'd be happy to open in a browser.
+
+`overview` fetches weather from [Open-Meteo](https://open-meteo.com) once a city is set in its settings.
+Until then it makes no network request, and it never guesses a location from the network address.

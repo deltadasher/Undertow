@@ -1,0 +1,242 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Ink</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #030405; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+<canvas id="c"></canvas>
+<script>
+// Ink: white ink dropped into black water. A small fluid solver on the GPU
+// (advection, vorticity confinement, pressure projection) carries a single
+// channel of ink, which is slightly heavier than the water and sinks in
+// plumes. Drops fall on their own; dragging the pointer stirs the water and
+// trails ink, and a click lets a large drop go.
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false });
+const cfg = { drops: 14, amount: 1, swirl: 26, sink: 1, linger: 6, invert: false };
+const SIM = 192, DYE = 768, PRESSURE_STEPS = 18;
+
+const VERT = `#version 300 es
+in vec2 p; uniform vec2 texel; out vec2 uv, L, R, T, B;
+void main() {
+  uv = p * 0.5 + 0.5;
+  L = uv - vec2(texel.x, 0.); R = uv + vec2(texel.x, 0.);
+  T = uv + vec2(0., texel.y); B = uv - vec2(0., texel.y);
+  gl_Position = vec4(p, 0., 1.);
+}`;
+const HEAD = `#version 300 es
+precision highp float; precision highp sampler2D;
+in vec2 uv, L, R, T, B; out vec4 o;
+`;
+const FRAG = {
+  // Semi-Lagrangian advection: look upstream and take what was there.
+  advect: `uniform sampler2D vel, src; uniform vec2 texel; uniform float dt, decay, fade, drain;
+    void main() {
+      // Thin haze fades out entirely, and ink that reaches the floor drains away.
+      vec4 v = texture(src, uv - dt * texture(vel, uv).xy * texel) / (1. + (decay + drain * (1. - smoothstep(0., 0.18, uv.y))) * dt);
+      o = v - sign(v) * min(abs(v), vec4(fade * dt));
+    }`,
+  splat: `uniform sampler2D src; uniform vec3 add; uniform vec2 at; uniform float radius, aspect;
+    void main() { vec2 d = uv - at; d.x *= aspect; o = vec4(texture(src, uv).xyz + add * exp(-dot(d, d) / radius), 1.); }`,
+  curl: `uniform sampler2D vel;
+    void main() { o = vec4(0.5 * (texture(vel, R).y - texture(vel, L).y - texture(vel, T).x + texture(vel, B).x), 0., 0., 1.); }`,
+  // Vorticity confinement keeps the small curls alive; the ink term makes it sink.
+  force: `uniform sampler2D vel, curl, dye; uniform float dt, swirl, sink;
+    void main() {
+      float c = texture(curl, uv).x;
+      vec2 f = 0.5 * vec2(abs(texture(curl, T).x) - abs(texture(curl, B).x), abs(texture(curl, R).x) - abs(texture(curl, L).x));
+      f = f / (length(f) + 1e-4) * swirl * c; f.y = -f.y;
+      vec2 v = texture(vel, uv).xy + f * dt;
+      v.y -= sink * min(texture(dye, uv).x, 2.) * dt;
+      o = vec4(clamp(v, -1000., 1000.), 0., 1.);
+    }`,
+  divergence: `uniform sampler2D vel;
+    void main() {
+      float l = texture(vel, L).x, r = texture(vel, R).x, t = texture(vel, T).y, b = texture(vel, B).y;
+      vec2 c = texture(vel, uv).xy;   // walls: nothing flows through the edges
+      if (L.x < 0.) l = -c.x; if (R.x > 1.) r = -c.x; if (T.y > 1.) t = -c.y; if (B.y < 0.) b = -c.y;
+      o = vec4(0.5 * (r - l + t - b), 0., 0., 1.);
+    }`,
+  pressure: `uniform sampler2D pre, div;
+    void main() { o = vec4((texture(pre, L).x + texture(pre, R).x + texture(pre, T).x + texture(pre, B).x - texture(div, uv).x) * 0.25, 0., 0., 1.); }`,
+  scale: `uniform sampler2D src; uniform float k; void main() { o = k * texture(src, uv); }`,
+  project: `uniform sampler2D pre, vel;
+    void main() { o = vec4(texture(vel, uv).xy - vec2(texture(pre, R).x - texture(pre, L).x, texture(pre, T).x - texture(pre, B).x), 0., 1.); }`,
+  // Thin ink reads cool and translucent, dense ink goes to full white.
+  show: `uniform sampler2D dye; uniform float invert;
+    void main() {
+      float d = max(texture(dye, uv).x - 0.02, 0.), c = pow(1. - exp(-d * 2.4), 1.25);
+      vec3 ink = mix(vec3(0.60, 0.69, 0.80), vec3(1.), smoothstep(0.05, 0.8, c)) * c;
+      vec2 q = uv - 0.5;
+      vec3 col = vec3(0.012, 0.015, 0.02) * (1. - dot(q, q) * 0.9) + ink;
+      o = vec4(mix(col, 1. - col, invert), 1.);
+    }`
+};
+
+let prog = {}, vel, dye, pre, div, curl, ready = false;
+
+function build(name) {
+  const make = (type, source) => {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, source); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(name + ': ' + gl.getShaderInfoLog(s));
+    return s;
+  };
+  const p = gl.createProgram();
+  gl.attachShader(p, make(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(p, make(gl.FRAGMENT_SHADER, HEAD + FRAG[name]));
+  gl.bindAttribLocation(p, 0, 'p');
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(name + ': ' + gl.getProgramInfoLog(p));
+  const u = {};
+  for (let i = 0; i < gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i++) {
+    const info = gl.getActiveUniform(p, i);
+    u[info.name] = gl.getUniformLocation(p, info.name);
+  }
+  return { p, u };
+}
+function target(w, h, internal, format, filter) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format, gl.HALF_FLOAT, null);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.viewport(0, 0, w, h); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  return { tex, fbo, w, h };
+}
+function pair(w, h, internal, format, filter) {
+  return { read: target(w, h, internal, format, filter), write: target(w, h, internal, format, filter),
+    swap() { const t = this.read; this.read = this.write; this.write = t; } };
+}
+function size(short) {
+  const aspect = canvas.width / Math.max(1, canvas.height);
+  return aspect >= 1 ? [Math.round(short * aspect), short] : [short, Math.round(short / aspect)];
+}
+function allocate() {
+  const [sw, sh] = size(SIM), [dw, dh] = size(Math.min(DYE, Math.min(canvas.width, canvas.height)));
+  vel = pair(sw, sh, gl.RG16F, gl.RG, gl.LINEAR);
+  dye = pair(dw, dh, gl.R16F, gl.RED, gl.LINEAR);
+  pre = pair(sw, sh, gl.R16F, gl.RED, gl.NEAREST);
+  div = target(sw, sh, gl.R16F, gl.RED, gl.NEAREST);
+  curl = target(sw, sh, gl.R16F, gl.RED, gl.NEAREST);
+}
+
+// Runs one program into `out` (null is the screen). `set` maps uniform names to
+// a number, an array, or a render target to sample.
+function run(name, out, set) {
+  const { p, u } = prog[name];
+  gl.useProgram(p);
+  const w = out ? out.w : canvas.width, h = out ? out.h : canvas.height;
+  let unit = 0;
+  for (const key in set) {
+    const value = set[key];
+    if (value && value.tex) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, value.tex); gl.uniform1i(u[key], unit++); }
+    else if (Array.isArray(value)) gl['uniform' + value.length + 'f'](u[key], ...value);
+    else gl.uniform1f(u[key], value);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, out ? out.fbo : null);
+  gl.viewport(0, 0, w, h);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+const texelOf = t => [1 / t.w, 1 / t.h];
+
+// Adds ink and a push at one point. x, y are 0..1 from the bottom left.
+function splat(x, y, vx, vy, ink, radius) {
+  const aspect = canvas.width / canvas.height;
+  run('splat', vel.write, { src: vel.read, texel: texelOf(vel.read), at: [x, y], add: [vx, vy, 0], radius, aspect });
+  vel.swap();
+  run('splat', dye.write, { src: dye.read, texel: texelOf(dye.read), at: [x, y], add: [ink, 0, 0], radius, aspect });
+  dye.swap();
+}
+
+// A drop is poured for a moment rather than placed, which is what makes a plume.
+const pours = [];
+function pour(x, y, big) {
+  const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.1;
+  pours.push({ x, y, dx: Math.cos(a), dy: Math.sin(a), life: big ? 0.9 : 0.5 + Math.random() * 0.4,
+    force: (big ? 520 : 260 + Math.random() * 260), ink: (big ? 12 : 7) * cfg.amount, radius: big ? 0.0011 : 0.0005 });
+}
+
+let nextDrop = 0.4;
+function step(dt) {
+  for (let i = pours.length - 1; i >= 0; i--) {
+    const k = pours[i];
+    splat(k.x + (Math.random() - 0.5) * 0.004, k.y, k.dx * k.force * dt * 60, k.dy * k.force * dt * 60, k.ink * dt, k.radius);
+    if ((k.life -= dt) <= 0) pours.splice(i, 1);
+  }
+  nextDrop -= dt;
+  if (nextDrop <= 0 && cfg.drops > 0) {
+    pour(0.08 + Math.random() * 0.84, 0.45 + Math.random() * 0.5, false);
+    nextDrop = 60 / cfg.drops * (0.5 + Math.random());
+  } else if (nextDrop <= 0) nextDrop = 1;
+
+  const st = texelOf(vel.read);
+  run('curl', curl, { vel: vel.read, texel: st });
+  run('force', vel.write, { vel: vel.read, curl, dye: dye.read, texel: st, dt, swirl: cfg.swirl, sink: cfg.sink * 9 });
+  vel.swap();
+  run('divergence', div, { vel: vel.read, texel: st });
+  run('scale', pre.write, { src: pre.read, texel: st, k: 0.8 });
+  pre.swap();
+  for (let i = 0; i < PRESSURE_STEPS; i++) {
+    run('pressure', pre.write, { pre: pre.read, div, texel: st });
+    pre.swap();
+  }
+  run('project', vel.write, { pre: pre.read, vel: vel.read, texel: st });
+  vel.swap();
+  run('advect', vel.write, { vel: vel.read, src: vel.read, texel: st, dt, decay: 0.25, fade: 0, drain: 0 });
+  vel.swap();
+  run('advect', dye.write, { vel: vel.read, src: dye.read, texel: st, dt, decay: 1 / (cfg.linger * 1.3), fade: 0.012, drain: 1.2 });
+  dye.swap();
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(1 / 30, Math.max(1 / 240, (now - last) / 1000));
+  last = now;
+  step(dt);
+  run('show', null, { dye: dye.read, texel: texelOf(dye.read), invert: cfg.invert ? 1 : 0 });
+  requestAnimationFrame(frame);
+}
+
+function resize() {
+  const scale = Math.min(devicePixelRatio || 1, 1.5);
+  canvas.width = Math.max(2, Math.round(innerWidth * scale)); canvas.height = Math.max(2, Math.round(innerHeight * scale));
+  if (ready) allocate();
+}
+
+// Without WebGL 2 and float render targets the page stays plain black water.
+if (gl && gl.getExtension('EXT_color_buffer_float')) {
+  gl.getExtension('OES_texture_float_linear');
+  gl.bindVertexArray(gl.createVertexArray());
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  for (const name in FRAG) prog[name] = build(name);
+  ready = true;
+  resize();
+  for (let i = 0; i < 4; i++) pour(0.12 + Math.random() * 0.76, 0.5 + Math.random() * 0.4, i === 0);
+  requestAnimationFrame(frame);
+}
+
+addEventListener('resize', resize);
+let px = -1, py = -1;
+addEventListener('mousemove', e => {
+  const x = e.clientX / innerWidth, y = 1 - e.clientY / innerHeight;
+  if (ready && px >= 0) {
+    const dx = x - px, dy = y - py, moved = Math.hypot(dx, dy);
+    if (moved > 0.0005 && moved < 0.2) splat(x, y, dx * 9000, dy * 9000, Math.min(0.5, moved * 14) * cfg.amount, 0.0007);
+  }
+  px = x; py = y;
+});
+addEventListener('mouseleave', () => { px = -1; });
+addEventListener('mousedown', e => { if (ready) pour(e.clientX / innerWidth, 1 - e.clientY / innerHeight, true); });
+
+window.undertow?.on('prop', ({ name, value }) => { if (name in cfg) cfg[name] = value; });
+</script>

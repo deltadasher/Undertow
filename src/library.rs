@@ -68,6 +68,10 @@ const PRESETS: &[(&str, &str)] = &[
     ("aurora/index.html", include_str!("../presets/aurora/index.html")),
     ("orrery/undertow.json", include_str!("../presets/orrery/undertow.json")),
     ("orrery/index.html", include_str!("../presets/orrery/index.html")),
+    ("ink/undertow.json", include_str!("../presets/ink/undertow.json")),
+    ("ink/index.html", include_str!("../presets/ink/index.html")),
+    ("overview/undertow.json", include_str!("../presets/overview/undertow.json")),
+    ("overview/index.html", include_str!("../presets/overview/index.html")),
 ];
 
 pub fn unpack_presets() {

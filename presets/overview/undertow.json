@@ -1,0 +1,13 @@
+{
+  "name": "Overview",
+  "entry": "index.html",
+  "feeds": ["stats"],
+  "props": {
+    "place": { "type": "textbox", "text": "Weather for (city name, blank for none)", "value": "" },
+    "units": { "type": "dropdown", "text": "Units", "value": 0, "items": ["Celsius, km/h", "Fahrenheit, mph"] },
+    "clock24": { "type": "checkbox", "text": "24-hour clock", "value": true },
+    "seconds": { "type": "checkbox", "text": "Show seconds", "value": false },
+    "accent": { "type": "color", "text": "Accent colour", "value": "#a99cff" },
+    "scale": { "type": "slider", "text": "Size", "value": 1, "min": 0.7, "max": 1.6, "step": 0.05 }
+  }
+}

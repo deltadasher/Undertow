@@ -1,0 +1,231 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Overview</title>
+<style>
+  :root { --accent: #a99cff; --fg: #eee9dc; --dim: #8e94aa; --line: #1c1f2c; --warn: #ec8eae; --scale: 1; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; color: var(--fg);
+    background: radial-gradient(120% 90% at 20% 30%, #11131f 0%, #080910 60%, #05060b 100%);
+    font: calc(clamp(16px, 1.25vw, 36px) * var(--scale)) / 1.4 "Inter", "Noto Sans", "Cantarell", system-ui, sans-serif;
+    font-variant-numeric: tabular-nums; }
+  body { display: grid; place-items: center; }
+  main { width: min(90vw, 74em); display: grid; grid-template-columns: 1.25fr 1fr; gap: 4em; align-items: center; }
+  .dim { color: var(--dim); }
+  #time { font-size: 9.5em; font-weight: 200; line-height: 0.95; letter-spacing: -0.03em; white-space: nowrap; }
+  #time small { font-size: 0.26em; font-weight: 400; letter-spacing: 0; color: var(--dim); margin-left: 0.4em; }
+  #date { font-size: 1.9em; font-weight: 300; margin-top: 0.5em; }
+  #date b { font-weight: 400; color: var(--accent); }
+  #sub { margin-top: 0.5em; color: var(--dim); font-size: 1.05em; }
+  aside { display: grid; gap: 2.2em; }
+  section { border-top: 1px solid var(--line); padding-top: 1.1em; }
+  h2 { margin: 0 0 0.7em; font-size: 0.82em; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
+  h2 span { float: right; letter-spacing: 0; text-transform: none; font-weight: 400; }
+  .now { display: flex; align-items: center; gap: 1em; }
+  .now .temp { font-size: 3.6em; font-weight: 200; line-height: 1; }
+  .now .what { font-size: 1.25em; }
+  .days { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6em; margin-top: 1em; }
+  .days div { text-align: center; }
+  .days .glyph { font-size: 1.5em; line-height: 1.5; }
+  .glyph { color: var(--accent); }
+  .now .glyph { font-size: 3em; line-height: 1; }
+  .meter { display: grid; grid-template-columns: 4.2em 1fr 8.5em; gap: 0.9em; align-items: center; height: 1.9em; }
+  .meter .v { text-align: right; white-space: nowrap; }
+  .bar { height: 0.32em; border-radius: 1em; background: var(--line); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; border-radius: 1em; background: var(--accent); transition: width 0.9s linear, background 0.9s; }
+  canvas { display: block; width: 100%; height: 3.4em; margin-top: 0.5em; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  td { padding: 0.12em 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  td.n { text-align: right; width: 5em; color: var(--dim); }
+  #note { color: var(--dim); }
+</style>
+<main>
+  <div>
+    <div id="time"></div>
+    <div id="date"></div>
+    <div id="sub"></div>
+  </div>
+  <aside>
+    <section id="weather">
+      <h2>Weather <span id="where"></span></h2>
+      <div id="note">Set a city in this wallpaper's settings to see the weather.</div>
+      <div id="sky" hidden>
+        <div class="now"><span class="glyph" id="nowGlyph"></span><span class="temp" id="nowTemp"></span>
+          <span><div class="what" id="nowWhat"></div><div class="dim" id="nowMore"></div></span></div>
+        <div class="days" id="days"></div>
+      </div>
+    </section>
+    <section>
+      <h2>System <span id="host"></span></h2>
+      <div class="meter"><span class="dim">CPU</span><div class="bar"><i id="cpuBar"></i></div><span class="v" id="cpuText"></span></div>
+      <div class="meter"><span class="dim">Memory</span><div class="bar"><i id="memBar"></i></div><span class="v" id="memText"></span></div>
+      <canvas id="graph"></canvas>
+      <div class="meter" style="grid-template-columns: 4.2em 1fr"><span class="dim">Network</span><span class="v" id="netText"></span></div>
+    </section>
+    <section>
+      <h2>Busiest <span id="nprocs"></span></h2>
+      <table><tbody id="procs"></tbody></table>
+    </section>
+  </aside>
+</main>
+<script>
+// Overview: the things worth a glance in one place. Time and date; weather
+// for a city you name; CPU, memory, network and the busiest processes from
+// undertow's "stats" feed.
+//
+// Weather comes from Open-Meteo (open-meteo.com, no key). Nothing is requested
+// until a city is set, and the only thing sent is that city's name and then
+// its coordinates. Location is never guessed from the network address.
+const $ = id => document.getElementById(id);
+const cfg = { place: '', units: 0, clock24: true, seconds: false };
+
+// ---- time -----------------------------------------------------------------
+function tick() {
+  const now = new Date(), h = now.getHours(), pad = n => String(n).padStart(2, '0');
+  const hour = cfg.clock24 ? pad(h) : String(h % 12 || 12);
+  $('time').innerHTML = hour + ':' + pad(now.getMinutes())
+    + (cfg.seconds ? '<small>' + pad(now.getSeconds()) + '</small>' : '')
+    + (cfg.clock24 ? '' : '<small>' + (h < 12 ? 'AM' : 'PM') + '</small>');
+  $('date').innerHTML = '<b>' + now.toLocaleDateString([], { weekday: 'long' }) + '</b>, '
+    + now.toLocaleDateString([], { day: 'numeric', month: 'long' });
+  const start = new Date(now.getFullYear(), 0, 1), day = Math.floor((now - start) / 864e5) + 1;
+  const week = Math.ceil((day + ((start.getDay() + 6) % 7)) / 7);
+  $('sub').textContent = 'Week ' + week + '  ·  day ' + day + ' of ' + now.getFullYear() + (upText ? '  ·  ' + upText : '');
+}
+let upText = '';
+setInterval(tick, 1000);
+
+// ---- weather --------------------------------------------------------------
+// WMO weather codes, grouped: [highest code in group, description, glyph].
+const SKY = [[0, 'Clear', '☀'], [2, 'Partly cloudy', '⛅'], [3, 'Overcast', '☁'], [48, 'Fog', '▒'], [57, 'Drizzle', '☂'],
+  [67, 'Rain', '☂'], [77, 'Snow', '❄'], [82, 'Showers', '☂'], [86, 'Snow showers', '❄'], [99, 'Thunderstorm', '⚡']];
+const sky = code => SKY.find(row => code <= row[0]) || SKY[2];
+let spot = null, weatherTimer = 0, asked = 0;
+
+function note(text) { $('note').textContent = text; $('note').hidden = false; $('sky').hidden = true; }
+async function locate() {
+  const place = cfg.place.trim(), mine = ++asked;
+  clearTimeout(weatherTimer);
+  spot = null; $('where').textContent = '';
+  if (!place) return note("Set a city in this wallpaper's settings to see the weather.");
+  note('Looking up ' + place + '…');
+  try {
+    const reply = await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + encodeURIComponent(place));
+    const found = (await reply.json()).results;
+    if (mine !== asked) return;
+    if (!found || !found.length) return note('No place called "' + place + '" was found.');
+    spot = found[0];
+    forecast();
+  } catch (error) {
+    if (mine === asked) { note('The weather service could not be reached.'); weatherTimer = setTimeout(locate, 5 * 60e3); }
+  }
+}
+async function forecast() {
+  const mine = asked, f = cfg.units === 1;
+  clearTimeout(weatherTimer);
+  if (!spot) return;
+  try {
+    const reply = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + spot.latitude + '&longitude=' + spot.longitude
+      + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m'
+      + '&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=4&timezone=auto'
+      + (f ? '&temperature_unit=fahrenheit&wind_speed_unit=mph' : ''));
+    const data = await reply.json();
+    if (mine !== asked) return;
+    if (!data.current || !data.daily) throw new Error('unexpected reply');
+    const now = data.current, deg = v => Math.round(v) + '°';
+    $('where').textContent = spot.name + (spot.country_code ? ', ' + spot.country_code : '');
+    $('nowGlyph').textContent = sky(now.weather_code)[2];
+    $('nowTemp').textContent = deg(now.temperature_2m);
+    $('nowWhat').textContent = sky(now.weather_code)[1];
+    $('nowMore').textContent = 'Feels ' + deg(now.apparent_temperature) + '  ·  wind ' + Math.round(now.wind_speed_10m)
+      + (f ? ' mph' : ' km/h') + '  ·  ' + Math.round(now.relative_humidity_2m) + '% humid';
+    $('days').replaceChildren(...data.daily.time.map((day, i) => {
+      const cell = document.createElement('div');
+      const name = i === 0 ? 'Today' : new Date(day + 'T12:00').toLocaleDateString([], { weekday: 'short' });
+      for (const [cls, text] of [['dim', name], ['glyph', sky(data.daily.weather_code[i])[2]],
+          ['', deg(data.daily.temperature_2m_max[i])], ['dim', deg(data.daily.temperature_2m_min[i])]]) {
+        const row = document.createElement('div');
+        row.className = cls; row.textContent = text;
+        cell.appendChild(row);
+      }
+      return cell;
+    }));
+    $('note').hidden = true; $('sky').hidden = false;
+    weatherTimer = setTimeout(forecast, 30 * 60e3);
+  } catch (error) {
+    if (mine !== asked) return;
+    if ($('sky').hidden) note('The weather service could not be reached.');
+    weatherTimer = setTimeout(forecast, 5 * 60e3);
+  }
+}
+
+// ---- system ---------------------------------------------------------------
+const HIST = 90, cpuHist = [];
+const size = kb => kb >= 1048576 ? (kb / 1048576).toFixed(1) + ' G' : (kb / 1024).toFixed(0) + ' M';
+const rate = b => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB/s' : b >= 1024 ? (b / 1024).toFixed(0) + ' kB/s' : b.toFixed(0) + ' B/s';
+function bar(el, frac) {
+  el.style.width = (Math.max(0, Math.min(1, frac)) * 100).toFixed(1) + '%';
+  el.style.background = frac > 0.85 ? 'var(--warn)' : 'var(--accent)';
+}
+function draw() {
+  const canvas = $('graph'), dpr = Math.min(devicePixelRatio || 1, 2), w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+  const g = canvas.getContext('2d'), accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  if (cpuHist.length < 2) return;
+  const x = i => w - (cpuHist.length - 1 - i) * (w / (HIST - 1)), y = v => h - 1 - Math.min(1, v) * (h - 3);
+  g.beginPath();
+  cpuHist.forEach((v, i) => i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v)));
+  g.strokeStyle = accent; g.lineWidth = 1.5; g.stroke();
+  g.lineTo(w, h); g.lineTo(x(0), h); g.closePath();
+  g.globalAlpha = 0.12; g.fillStyle = accent; g.fill(); g.globalAlpha = 1;
+}
+function system(s) {
+  $('host').textContent = s.host + (s.temp ? '  ·  ' + s.temp.toFixed(0) + '°C' : '');
+  bar($('cpuBar'), s.cpu.total); $('cpuText').textContent = (s.cpu.total * 100).toFixed(0) + '%';
+  bar($('memBar'), s.mem.used / s.mem.total); $('memText').textContent = size(s.mem.used) + ' / ' + size(s.mem.total);
+  $('netText').textContent = '↓ ' + rate(s.net.rx) + '    ↑ ' + rate(s.net.tx);
+  $('nprocs').textContent = s.nprocs + ' running';
+  $('procs').replaceChildren(...s.procs.slice(0, 4).map(p => {
+    const tr = document.createElement('tr');
+    for (const [cls, text] of [['', p.name], ['n', p.cpu.toFixed(1) + '%'], ['n', size(p.mem)]]) {
+      const td = document.createElement('td');
+      td.className = cls; td.textContent = text;
+      tr.appendChild(td);
+    }
+    return tr;
+  }));
+  const d = Math.floor(s.uptime / 86400), h = Math.floor(s.uptime % 86400 / 3600), m = Math.floor(s.uptime % 3600 / 60);
+  upText = 'up ' + (d ? d + 'd ' : '') + h + 'h ' + String(m).padStart(2, '0') + 'm';
+  cpuHist.push(s.cpu.total); if (cpuHist.length > HIST) cpuHist.shift();
+  draw();
+}
+addEventListener('resize', draw);
+
+function setProp(name, value) {
+  if (name === 'accent' || name === 'scale') { document.documentElement.style.setProperty('--' + name, value); draw(); return; }
+  if (!(name in cfg) || cfg[name] === value) return;
+  cfg[name] = value;
+  if (name === 'place') locate();
+  else if (name === 'units') forecast();
+  else tick();
+}
+
+if (window.undertow) {
+  undertow.on('stats', system);
+  undertow.on('prop', ({ name, value }) => setProp(name, value));
+} else {
+  // Opened in a normal browser: made-up numbers so the layout can be worked on.
+  // `?place=Name` tries the weather.
+  let t = 0;
+  setInterval(() => {
+    t++;
+    system({ host: 'demo', temp: 47, uptime: 93000 + t, nprocs: 312, cpu: { total: 0.3 + 0.25 * Math.sin(t / 6) * Math.random() },
+      mem: { total: 32e6, used: 11e6 }, net: { rx: 4e5 * Math.random(), tx: 6e4 * Math.random() },
+      procs: ['firefox', 'kwin_wayland', 'plasmashell', 'pipewire', 'konsole'].map((name, i) => ({ name, cpu: 40 * Math.random() / (i + 1), mem: 9e5 / (i + 1) })) });
+  }, 1000);
+  const place = new URLSearchParams(location.search).get('place');
+  if (place) setProp('place', place);
+}
+tick();
+</script>

@@ -72,6 +72,16 @@ const PRESETS: &[(&str, &str)] = &[
     ("ink/index.html", include_str!("../presets/ink/index.html")),
     ("overview/undertow.json", include_str!("../presets/overview/undertow.json")),
     ("overview/index.html", include_str!("../presets/overview/index.html")),
+    ("glyphs/undertow.json", include_str!("../presets/glyphs/undertow.json")),
+    ("glyphs/index.html", include_str!("../presets/glyphs/index.html")),
+    ("contours/undertow.json", include_str!("../presets/contours/undertow.json")),
+    ("contours/index.html", include_str!("../presets/contours/index.html")),
+    ("flock/undertow.json", include_str!("../presets/flock/undertow.json")),
+    ("flock/index.html", include_str!("../presets/flock/index.html")),
+    ("nebula/undertow.json", include_str!("../presets/nebula/undertow.json")),
+    ("nebula/index.html", include_str!("../presets/nebula/index.html")),
+    ("ripples/undertow.json", include_str!("../presets/ripples/undertow.json")),
+    ("ripples/index.html", include_str!("../presets/ripples/index.html")),
 ];
 
 pub fn unpack_presets() {

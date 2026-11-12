@@ -1,0 +1,80 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Glyph rain</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05070a; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+<canvas id="c"></canvas>
+<script>
+// Glyph rain: columns of characters fall at their own pace and fade behind a
+// bright head. Columns near the pointer run faster and brighter; a click
+// restarts the ones around it from the top.
+const canvas = document.getElementById('c');
+const g = canvas.getContext('2d');
+const cfg = { color: '#5fd7a7', size: 18, speed: 1, trail: 6, set: 0 };
+const SETS = [
+  '0123456789ABCDEF<>[]{}/\\|=+-*#$%&ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄ',
+  '0123456789ABCDEF',
+  '01',
+  'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ',
+  '─│┌┐└┘├┤┬┴┼╭╮╰╯═║╔╗╚╝'
+];
+let W = 0, H = 0, cols = [];
+const mouse = { x: -1e6, active: false };
+
+function reset() {
+  W = canvas.width = innerWidth; H = canvas.height = innerHeight;
+  g.fillStyle = '#05070a'; g.fillRect(0, 0, W, H);
+  cols = [];
+  for (let i = 0; i < Math.ceil(W / cfg.size); i++)
+    cols.push({ y: (Math.random() * 2 - 1) * H / cfg.size, pace: 0.35 + Math.random() * 0.65, carry: 0 });
+}
+const glyph = () => { const s = SETS[cfg.set] || SETS[0]; return s[Math.floor(Math.random() * s.length)]; };
+
+let last = performance.now(), fadeCarry = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  // The fade is applied in fixed steps so the trail is the same length at any refresh rate.
+  for (fadeCarry += dt * 30; fadeCarry >= 1; fadeCarry -= 1) {
+    g.fillStyle = `rgba(5,7,10,${0.24 / cfg.trail})`;
+    g.fillRect(0, 0, W, H);
+  }
+  g.font = `${cfg.size}px "JetBrains Mono", "Fira Code", "Hack", "DejaVu Sans Mono", monospace`;
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  for (let i = 0; i < cols.length; i++) {
+    const col = cols[i], x = i * cfg.size + cfg.size / 2;
+    const near = mouse.active ? Math.max(0, 1 - Math.abs(x - mouse.x) / 180) : 0;
+    col.carry += dt * 14 * cfg.speed * col.pace * (1 + near * 1.5);
+    while (col.carry >= 1) {
+      col.carry -= 1;
+      const y = Math.floor(col.y) * cfg.size;
+      // The previous head settles to the body colour; the new head is near white.
+      g.fillStyle = '#05070a'; g.fillRect(x - cfg.size / 2, y - cfg.size, cfg.size, cfg.size);
+      g.globalAlpha = 0.8 + near * 0.2; g.fillStyle = cfg.color; g.fillText(col.last || glyph(), x, y - cfg.size);
+      g.globalAlpha = 1; g.fillStyle = '#eafff6'; g.fillText(col.last = glyph(), x, y);
+      col.y += 1;
+      if (y > H && Math.random() < 0.06) { col.y = -Math.random() * 12; col.pace = 0.35 + Math.random() * 0.65; }
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+addEventListener('resize', reset);
+addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.active = true; });
+addEventListener('mouseleave', () => { mouse.active = false; });
+addEventListener('mousedown', e => {
+  for (let i = 0; i < cols.length; i++)
+    if (Math.abs(i * cfg.size - e.clientX) < 220) cols[i].y = -Math.random() * 6;
+});
+
+window.undertow?.on('prop', ({ name, value }) => {
+  if (!(name in cfg) || cfg[name] === value) return;
+  cfg[name] = value;
+  if (name === 'size') reset();
+});
+
+reset();
+requestAnimationFrame(frame);
+</script>

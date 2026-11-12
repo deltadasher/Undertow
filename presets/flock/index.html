@@ -1,0 +1,120 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flock</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2a4d; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+<canvas id="c"></canvas>
+<script>
+// Flock: a murmuration against an evening sky. Each bird follows three rules
+// (keep apart, match heading, stay with the group) using only the neighbours
+// it can see. The pointer is a hawk they swerve around; a click startles
+// everything nearby.
+const canvas = document.getElementById('c');
+const g = canvas.getContext('2d');
+const cfg = { count: 900, speed: 1, reach: 60, dawn: false };
+let W = 0, H = 0, B = new Float32Array(0);   // x, y, vx, vy per bird
+let sky = null;
+const mouse = { x: 0, y: 0, active: false };
+
+function fit() {
+  const old = B;
+  B = new Float32Array(Math.round(cfg.count) * 4);
+  B.set(old.subarray(0, Math.min(old.length, B.length)));
+  for (let i = old.length; i < B.length; i += 4) {
+    const a = Math.random() * 6.283;
+    B[i] = Math.random() * W; B[i + 1] = Math.random() * H; B[i + 2] = Math.cos(a) * 2; B[i + 3] = Math.sin(a) * 2;
+  }
+}
+function paintSky() {
+  sky = g.createLinearGradient(0, 0, 0, H);
+  const stops = cfg.dawn ? ['#5c6f9c', '#a9a3c4', '#f0c4a8', '#fbe6bd'] : ['#2b2a4d', '#6a4c7d', '#d6785f', '#f4bd7c'];
+  stops.forEach((color, i) => sky.addColorStop([0, 0.45, 0.82, 1][i], color));
+}
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; paintSky(); fit(); }
+
+let grid = new Map();
+function step(dt) {
+  const reach = cfg.reach, reach2 = reach * reach, apart2 = 18 * 18, cols = Math.ceil(W / reach) + 2;
+  grid.clear();
+  for (let i = 0; i < B.length; i += 4) {
+    const key = Math.floor(B[i] / reach) + 1 + (Math.floor(B[i + 1] / reach) + 1) * cols;
+    const cell = grid.get(key);
+    if (cell) cell.push(i); else grid.set(key, [i]);
+  }
+  for (let i = 0; i < B.length; i += 4) {
+    const x = B[i], y = B[i + 1];
+    let cx = 0, cy = 0, ax = 0, ay = 0, sx = 0, sy = 0, n = 0;
+    const gx = Math.floor(x / reach) + 1, gy = Math.floor(y / reach) + 1;
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+      const cell = grid.get(gx + ox + (gy + oy) * cols);
+      if (!cell) continue;
+      for (let k = 0; k < cell.length && n < 24; k++) {
+        const j = cell[k];
+        if (j === i) continue;
+        const dx = B[j] - x, dy = B[j + 1] - y, d2 = dx * dx + dy * dy;
+        if (d2 > reach2) continue;
+        cx += dx; cy += dy; ax += B[j + 2]; ay += B[j + 3]; n++;
+        if (d2 < apart2 && d2 > 0.01) { sx -= dx / d2; sy -= dy / d2; }
+      }
+    }
+    let vx = B[i + 2], vy = B[i + 3];
+    if (n) {
+      vx += (cx / n * 0.0022 + (ax / n - vx) * 0.045 + sx * 0.9) * dt;
+      vy += (cy / n * 0.0022 + (ay / n - vy) * 0.045 + sy * 0.9) * dt;
+    }
+    // Near an edge a bird banks back, harder the further out it is, so the
+    // flock wheels around the sky instead of leaving it.
+    const mx = W * 0.14, my = H * 0.16, turn = 0.004 * dt;
+    if (x < mx) vx += (mx - x) * turn; else if (x > W - mx) vx -= (x - W + mx) * turn;
+    if (y < my) vy += (my - y) * turn; else if (y > H - my) vy -= (y - H + my) * turn;
+    if (mouse.active) {
+      const dx = x - mouse.x, dy = y - mouse.y, d2 = dx * dx + dy * dy;
+      if (d2 < 40000) { const k = (1 - d2 / 40000) * 0.6 / (Math.sqrt(d2) + 1) * dt; vx += dx * k; vy += dy * k; }
+    }
+    const v = Math.hypot(vx, vy) || 1, want = Math.min(5.5, Math.max(2.2, v));
+    vx = vx / v * want; vy = vy / v * want;
+    B[i + 2] = vx; B[i + 3] = vy;
+    B[i] = x + vx * dt * cfg.speed; B[i + 1] = y + vy * dt * cfg.speed;
+  }
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)) * 60;   // in 60 Hz frames
+  last = now;
+  step(dt);
+  g.fillStyle = sky; g.fillRect(0, 0, W, H);
+  // Each bird is a short dark stroke along its heading.
+  g.strokeStyle = cfg.dawn ? 'rgba(24,26,44,0.9)' : 'rgba(10,9,20,0.92)';
+  g.lineWidth = 1.6; g.lineCap = 'round';
+  g.beginPath();
+  for (let i = 0; i < B.length; i += 4) {
+    g.moveTo(B[i], B[i + 1]);
+    g.lineTo(B[i] - B[i + 2] * 1.5, B[i + 1] - B[i + 3] * 1.5);
+  }
+  g.stroke();
+  requestAnimationFrame(frame);
+}
+
+addEventListener('resize', resize);
+addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.active = true; });
+addEventListener('mouseleave', () => { mouse.active = false; });
+addEventListener('mousedown', e => {
+  for (let i = 0; i < B.length; i += 4) {
+    const dx = B[i] - e.clientX, dy = B[i + 1] - e.clientY, d = Math.hypot(dx, dy);
+    if (d < 380 && d > 0.5) { const k = (1 - d / 380) * 9 / d; B[i + 2] += dx * k; B[i + 3] += dy * k; }
+  }
+});
+
+window.undertow?.on('prop', ({ name, value }) => {
+  if (!(name in cfg)) return;
+  cfg[name] = value;
+  if (name === 'count') fit();
+  if (name === 'dawn') paintSky();
+});
+
+resize();
+requestAnimationFrame(frame);
+</script>

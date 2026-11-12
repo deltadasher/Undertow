@@ -83,6 +83,11 @@ read, and `livelyPropertyListener(name, value)` is called for every setting.
 | `orrery` | bodies on Keplerian orbits with fading trails around a central star | the system leans toward the pointer, click launches a comet |
 | `ink` | white ink sinking and curling through black water (GPU fluid simulation; can be inverted) | drag to stir and trail ink, click to let a large drop go |
 | `overview` | time and date, weather for a city you name, CPU, memory, network and the busiest processes | - |
+| `glyphs` | columns of falling characters with fading trails (hex, binary, kana, box drawing or mixed) | columns near the pointer run faster, click restarts them |
+| `contours` | a topographic map of terrain that keeps shifting, with index contours | the pointer raises a hill, click sends a ripple through the land |
+| `flock` | a murmuration of birds against a dusk or dawn sky | the pointer is a hawk they swerve around, click startles them |
+| `nebula` | slow clouds of gas over a star field (fragment shader) | clouds part around the pointer, click sends a pulse of light |
+| `ripples` | a pond in the rain, simulated with the wave equation and lit from its slope | moving drags a wake, click drops a stone |
 
 ## Writing a wallpaper
 

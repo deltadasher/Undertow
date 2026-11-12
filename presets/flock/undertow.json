@@ -1,0 +1,10 @@
+{
+  "name": "Flock",
+  "entry": "index.html",
+  "props": {
+    "count": { "type": "slider", "text": "Birds", "value": 900, "min": 100, "max": 3000, "step": 50 },
+    "speed": { "type": "slider", "text": "Speed", "value": 1, "min": 0.3, "max": 2.5, "step": 0.1 },
+    "reach": { "type": "slider", "text": "How far they see", "value": 60, "min": 30, "max": 120, "step": 5 },
+    "dawn": { "type": "checkbox", "text": "Dawn sky instead of dusk", "value": false }
+  }
+}

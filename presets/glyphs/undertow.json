@@ -1,0 +1,11 @@
+{
+  "name": "Glyph rain",
+  "entry": "index.html",
+  "props": {
+    "color": { "type": "color", "text": "Colour", "value": "#5fd7a7" },
+    "size": { "type": "slider", "text": "Glyph size", "value": 18, "min": 10, "max": 40, "step": 1 },
+    "speed": { "type": "slider", "text": "Speed", "value": 1, "min": 0.2, "max": 3, "step": 0.1 },
+    "trail": { "type": "slider", "text": "Trail length", "value": 6, "min": 1, "max": 12, "step": 1 },
+    "set": { "type": "dropdown", "text": "Characters", "value": 0, "items": ["Mixed", "Hex", "Binary", "Kana", "Box drawing"] }
+  }
+}

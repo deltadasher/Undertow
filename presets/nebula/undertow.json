@@ -1,0 +1,10 @@
+{
+  "name": "Nebula",
+  "entry": "index.html",
+  "props": {
+    "hue": { "type": "slider", "text": "Hue", "value": 250, "min": 0, "max": 360, "step": 1 },
+    "spread": { "type": "slider", "text": "Colour range", "value": 90, "min": 0, "max": 180, "step": 5 },
+    "speed": { "type": "slider", "text": "Speed", "value": 1, "min": 0, "max": 4, "step": 0.1 },
+    "stars": { "type": "checkbox", "text": "Stars", "value": true }
+  }
+}

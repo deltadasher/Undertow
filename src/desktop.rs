@@ -86,9 +86,12 @@ pub fn ensure_launcher() {
     if !config::flag("launcher", true) || packaged() {
         return;
     }
+    // The icon is kept current too, so a new build's artwork reaches the launcher.
+    if fs::read_to_string(icon_file()).ok().as_deref() != Some(ICON) {
+        write(icon_file(), ICON);
+    }
     let wanted = launcher_entry();
     if fs::read_to_string(launcher_file()).ok().as_deref() != Some(wanted.as_str()) {
-        write(icon_file(), ICON);
         write(launcher_file(), &wanted);
     }
 }

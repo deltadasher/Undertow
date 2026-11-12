@@ -1,6 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#0b1220"/>
-  <path d="M8 24c8-8 16-8 24 0s16 8 24 0" fill="none" stroke="#5fd7a7" stroke-width="5" stroke-linecap="round"/>
-  <path d="M8 38c8-8 16-8 24 0s16 8 24 0" fill="none" stroke="#5fd7a7" stroke-width="5" stroke-linecap="round" opacity=".6"/>
-  <path d="M8 52c8-8 16-8 24 0s16 8 24 0" fill="none" stroke="#5fd7a7" stroke-width="5" stroke-linecap="round" opacity=".3"/>
+  <defs>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#17324d"/>
+      <stop offset="1" stop-color="#060b14"/>
+    </linearGradient>
+    <linearGradient id="current" x1="10" y1="16" x2="52" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c4f7e2"/>
+      <stop offset=".5" stop-color="#5fd7a7"/>
+      <stop offset="1" stop-color="#38a6c8"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#water)"/>
+  <g fill="none" stroke-linecap="round">
+    <path d="M10 31h11M10 41h8" stroke="#5fd7a7" stroke-width="3.5" opacity=".32"/>
+    <path d="M10 19H37A15 15 0 0 1 37 49A10.5 10.5 0 0 1 37 28A6 6 0 0 1 37 40" stroke="url(#current)" stroke-width="5.5"/>
+  </g>
 </svg>

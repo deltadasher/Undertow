@@ -21,7 +21,13 @@ cargo build --release
 # the result is one self-contained binary: target/release/undertow
 ```
 
-Copy it anywhere on your `PATH` (`cargo install --path .` works too). Presets are embedded in the binary.
+Install it with `cargo install --path .`, or system-wide with `sudo make install` (binary, desktop
+entry and icon under `/usr/local`; `PREFIX` and `DESTDIR` are honoured for packaging). Presets are
+embedded in the binary.
+
+undertow is an ordinary desktop app: after the first run of any `undertow` command it has an entry in
+the app launcher, so KRunner, Kickoff, fuzzel, rofi and the like find it under "Undertow", "wallpaper"
+or "live". The entry also carries Pause, Resume and Quit actions.
 
 ## Use
 
@@ -30,7 +36,8 @@ panel, paste `owner/repo` or a GitHub URL to install one. Closing the window lea
 running in the system tray; the tray icon reopens the picker, pauses, or quits.
 
 Tick **Start at login** in the picker and undertow starts itself in the tray on every login,
-with no shell or compositor config involved. **Show in app launcher** adds a menu entry.
+with no shell or compositor config involved. **Show in app launcher** is on by default; untick it
+to remove the entry and keep it removed.
 
 On niri/Hyprland the tray icon needs a bar with a tray (e.g. waybar); running `undertow` again
 always reopens the picker either way.

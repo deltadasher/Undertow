@@ -192,6 +192,13 @@ fn main() -> ExitCode {
     let cmd = args.first().map(String::as_str).unwrap_or(if headless { "--background" } else { "" });
     let rest = args.get(1..).unwrap_or_default().join(" ");
 
+    // Any ordinary run makes undertow findable in the app launcher, so it can be
+    // searched for straight after `cargo install`. A host shell's headless and
+    // JSON calls leave the desktop alone.
+    if !headless && !json {
+        desktop::ensure_launcher();
+    }
+
     match cmd {
         "" | "show" => {
             if ipc::send("show").is_some() {

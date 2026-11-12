@@ -1,6 +1,6 @@
 //! Paths and the small JSON config file (`~/.config/undertow/config.json`).
 //!
-//! Shape: `{ "current": "<id>", "props": { "<id>": { "<name>": <value> } } }`
+//! Shape: `{ "current": "<id>", "props": { "<id>": { "<name>": <value> } }, "launcher": <bool> }`
 
 use serde_json::{json, Map, Value};
 use std::path::PathBuf;
@@ -99,4 +99,17 @@ pub fn reset_props(id: &str) {
         props.remove(id);
         save(&c);
     }
+}
+
+/// A top-level on/off choice, e.g. `launcher`.
+pub fn flag(name: &str, fallback: bool) -> bool {
+    let _g = LOCK.lock().unwrap();
+    load()[name].as_bool().unwrap_or(fallback)
+}
+
+pub fn set_flag(name: &str, on: bool) {
+    let _g = LOCK.lock().unwrap();
+    let mut c = load();
+    c[name] = json!(on);
+    save(&c);
 }

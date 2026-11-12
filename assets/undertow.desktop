@@ -1,0 +1,27 @@
+[Desktop Entry]
+Type=Application
+Name=Undertow
+GenericName=Live Wallpaper
+Comment=Pick and install interactive live wallpapers
+Keywords=wallpaper;live;animated;interactive;background;desktop;lively;web;
+Exec=undertow
+TryExec=undertow
+Icon=undertow
+Terminal=false
+Categories=Settings;DesktopSettings;
+StartupNotify=true
+StartupWMClass=undertow
+SingleMainWindow=true
+Actions=pause;resume;quit;
+
+[Desktop Action pause]
+Name=Pause Wallpaper
+Exec=undertow pause
+
+[Desktop Action resume]
+Name=Resume Wallpaper
+Exec=undertow resume
+
+[Desktop Action quit]
+Name=Quit Undertow
+Exec=undertow quit

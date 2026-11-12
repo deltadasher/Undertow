@@ -1,0 +1,9 @@
+{
+  "name": "Aurora",
+  "entry": "index.html",
+  "props": {
+    "glow": { "type": "slider", "text": "Glow", "value": 60, "min": 20, "max": 100, "step": 5 },
+    "pace": { "type": "slider", "text": "Pace", "value": 4, "min": 1, "max": 10, "step": 1 },
+    "stars": { "type": "checkbox", "text": "Stars", "value": true }
+  }
+}

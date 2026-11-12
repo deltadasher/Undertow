@@ -1,0 +1,9 @@
+{
+  "name": "Deep field",
+  "entry": "index.html",
+  "props": {
+    "stars": { "type": "slider", "text": "Stars", "value": 1400, "min": 200, "max": 4000, "step": 100 },
+    "drift": { "type": "slider", "text": "Drift", "value": 3, "min": 0, "max": 10, "step": 1 },
+    "meteors": { "type": "checkbox", "text": "Occasional meteors", "value": true }
+  }
+}

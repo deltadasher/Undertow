@@ -1,0 +1,9 @@
+{
+  "name": "Constellations",
+  "entry": "index.html",
+  "props": {
+    "count": { "type": "slider", "text": "Stars", "value": 110, "min": 30, "max": 260, "step": 10 },
+    "reach": { "type": "slider", "text": "Reach", "value": 170, "min": 60, "max": 320, "step": 10 },
+    "speed": { "type": "slider", "text": "Speed", "value": 1, "min": 0.2, "max": 4, "step": 0.1 }
+  }
+}

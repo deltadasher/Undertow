@@ -1,0 +1,96 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Deep field</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #080910; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+<canvas id="c"></canvas>
+<script>
+// Deep field: a slowly drifting star field in three depths. Stars twinkle, the
+// view leans toward the pointer, and a click (or the occasional chance) sends a meteor.
+const canvas = document.getElementById('c');
+const g = canvas.getContext('2d');
+const cfg = { stars: 1400, drift: 3, meteors: true };
+const TINTS = ['#eee9dc', '#72d9e7', '#a99cff'];
+
+let W = 0, H = 0, S = new Float32Array(0);   // x, y (0..1), depth (0..1), phase per star
+const meteors = [];
+const mouse = { x: 0, y: 0, active: false };
+let lookX = 0, lookY = 0, nextMeteor = 6;
+
+function seed() {
+  S = new Float32Array(Math.round(cfg.stars) * 4);
+  for (let i = 0; i < S.length; i += 4) {
+    S[i] = Math.random(); S[i + 1] = Math.random();
+    S[i + 2] = Math.pow(Math.random(), 1.8); S[i + 3] = Math.random() * 6.283;
+  }
+}
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+function launch(x, y) {
+  const dir = Math.random() < 0.5 ? -1 : 1;
+  meteors.push({ x, y, vx: dir * (14 + Math.random() * 10), vy: 5 + Math.random() * 5, life: 1 });
+  if (meteors.length > 6) meteors.shift();
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  const t = now / 1000;
+  const tx = mouse.active ? mouse.x / W * 2 - 1 : 0, ty = mouse.active ? mouse.y / H * 2 - 1 : 0;
+  lookX += (tx - lookX) * Math.min(1, dt * 1.6); lookY += (ty - lookY) * Math.min(1, dt * 1.6);
+
+  const wash = g.createLinearGradient(0, 0, 0, H);
+  wash.addColorStop(0, '#05060b'); wash.addColorStop(1, '#080910');
+  g.globalAlpha = 1; g.fillStyle = wash; g.fillRect(0, 0, W, H);
+
+  // One pass per tint keeps fill-style changes to three per frame.
+  for (let tint = 0; tint < 3; tint++) {
+    g.fillStyle = TINTS[tint];
+    for (let i = 0, n = 0; i < S.length; i += 4, n++) {
+      if ((n % 9 === 0 ? 1 : n % 13 === 0 ? 2 : 0) !== tint) continue;
+      const depth = S[i + 2];
+      let x = (S[i] + t * 0.0035 * cfg.drift / 3 * (0.15 + depth) - lookX * 0.03 * depth) % 1;
+      let y = (S[i + 1] - lookY * 0.03 * depth) % 1;
+      if (x < 0) x += 1;
+      if (y < 0) y += 1;
+      g.globalAlpha = (0.38 + 0.62 * depth) * (0.55 + 0.45 * Math.sin(t * (0.5 + depth * 1.7) + S[i + 3]));
+      const size = depth > 0.85 ? 3 : depth > 0.45 ? 2 : 1;
+      g.fillRect(x * W, y * H, size, size);
+    }
+  }
+
+  g.globalAlpha = 1; g.lineWidth = 2; g.lineCap = 'round';
+  for (let m = meteors.length - 1; m >= 0; m--) {
+    const k = meteors[m], step = dt * 60;
+    k.x += k.vx * step; k.y += k.vy * step; k.life -= 0.02 * step;
+    if (k.life <= 0) { meteors.splice(m, 1); continue; }
+    const tail = g.createLinearGradient(k.x, k.y, k.x - k.vx * 9, k.y - k.vy * 9);
+    tail.addColorStop(0, `rgba(238,233,220,${0.95 * k.life})`); tail.addColorStop(1, 'rgba(114,217,231,0)');
+    g.strokeStyle = tail;
+    g.beginPath(); g.moveTo(k.x, k.y); g.lineTo(k.x - k.vx * 9, k.y - k.vy * 9); g.stroke();
+  }
+  nextMeteor -= dt;
+  if (nextMeteor <= 0) {
+    if (cfg.meteors) launch(Math.random() * W, Math.random() * H * 0.5);
+    nextMeteor = 7 + Math.random() * 14;
+  }
+  requestAnimationFrame(frame);
+}
+
+addEventListener('resize', resize);
+addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.active = true; });
+addEventListener('mouseleave', () => { mouse.active = false; });
+addEventListener('mousedown', e => launch(e.clientX, e.clientY));
+
+window.undertow?.on('prop', ({ name, value }) => {
+  if (!(name in cfg)) return;
+  cfg[name] = value;
+  if (name === 'stars') seed();
+});
+
+seed();
+resize();
+requestAnimationFrame(frame);
+</script>

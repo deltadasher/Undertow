@@ -1,0 +1,96 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Constellations</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #080910; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+<canvas id="c"></canvas>
+<script>
+// Constellations: drifting points draw a line to every neighbour within reach,
+// so figures keep forming and dissolving. The pointer is one more star to link
+// to; a click pushes nearby points away.
+const canvas = document.getElementById('c');
+const g = canvas.getContext('2d');
+const cfg = { count: 110, reach: 170, speed: 1 };
+
+let W = 0, H = 0, P = new Float32Array(0);   // x, y, vx, vy per point
+const mouse = { x: 0, y: 0, active: false };
+
+function seed() {
+  P = new Float32Array(Math.round(cfg.count) * 4);
+  for (let i = 0; i < P.length; i += 4) {
+    const a = Math.random() * 6.283, s = 0.25 + Math.random() * 0.55;
+    P[i] = Math.random() * W; P[i + 1] = Math.random() * H;
+    P[i + 2] = Math.cos(a) * s; P[i + 3] = Math.sin(a) * s;
+  }
+}
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; seed(); }
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000) * 60;   // in 60 Hz frames
+  last = now;
+  for (let i = 0; i < P.length; i += 4) {
+    // A pushed point coasts back down to its cruising speed.
+    if (P[i + 2] * P[i + 2] + P[i + 3] * P[i + 3] > 0.64) { P[i + 2] *= 0.96; P[i + 3] *= 0.96; }
+    P[i] += P[i + 2] * dt * cfg.speed; P[i + 1] += P[i + 3] * dt * cfg.speed;
+    if (P[i] < -20) P[i] = W + 20; else if (P[i] > W + 20) P[i] = -20;
+    if (P[i + 1] < -20) P[i + 1] = H + 20; else if (P[i + 1] > H + 20) P[i + 1] = -20;
+  }
+
+  g.fillStyle = '#080910'; g.fillRect(0, 0, W, H);
+  const reach = cfg.reach, reach2 = reach * reach;
+  // Lines are sorted into four strengths so each is stroked as one path.
+  const levels = [[], [], [], []];
+  for (let i = 0; i < P.length; i += 4) {
+    for (let j = i + 4; j < P.length; j += 4) {
+      const dx = P[i] - P[j], dy = P[i + 1] - P[j + 1], d2 = dx * dx + dy * dy;
+      if (d2 < reach2) levels[Math.min(3, Math.floor((1 - Math.sqrt(d2) / reach) * 4))].push(i, j);
+    }
+  }
+  g.lineWidth = 1;
+  for (let level = 0; level < 4; level++) {
+    const pairs = levels[level];
+    if (!pairs.length) continue;
+    g.strokeStyle = `rgba(169,156,255,${0.1 + level * 0.17})`;
+    g.beginPath();
+    for (let k = 0; k < pairs.length; k += 2) {
+      g.moveTo(P[pairs[k]], P[pairs[k] + 1]); g.lineTo(P[pairs[k + 1]], P[pairs[k + 1] + 1]);
+    }
+    g.stroke();
+  }
+  if (mouse.active) {
+    const wide2 = reach * reach * 2.56;
+    g.strokeStyle = 'rgba(114,217,231,0.55)';
+    g.beginPath();
+    for (let i = 0; i < P.length; i += 4) {
+      const dx = P[i] - mouse.x, dy = P[i + 1] - mouse.y;
+      if (dx * dx + dy * dy < wide2) { g.moveTo(mouse.x, mouse.y); g.lineTo(P[i], P[i + 1]); }
+    }
+    g.stroke();
+  }
+  g.fillStyle = '#eee9dc';
+  for (let i = 0; i < P.length; i += 4) g.fillRect(P[i] - 1.5, P[i + 1] - 1.5, 3, 3);
+  requestAnimationFrame(frame);
+}
+
+addEventListener('resize', resize);
+addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.active = true; });
+addEventListener('mouseleave', () => { mouse.active = false; });
+addEventListener('mousedown', e => {
+  for (let i = 0; i < P.length; i += 4) {
+    const dx = P[i] - e.clientX, dy = P[i + 1] - e.clientY, d = Math.hypot(dx, dy);
+    if (d < 300 && d > 0.5) { const k = (1 - d / 300) * 10 / d; P[i + 2] += dx * k; P[i + 3] += dy * k; }
+  }
+});
+
+window.undertow?.on('prop', ({ name, value }) => {
+  if (!(name in cfg)) return;
+  cfg[name] = value;
+  if (name === 'count') seed();
+});
+
+resize();
+requestAnimationFrame(frame);
+</script>

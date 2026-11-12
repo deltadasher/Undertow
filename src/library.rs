@@ -60,6 +60,14 @@ const PRESETS: &[(&str, &str)] = &[
     ("life/index.html", include_str!("../presets/life/index.html")),
     ("flow/undertow.json", include_str!("../presets/flow/undertow.json")),
     ("flow/index.html", include_str!("../presets/flow/index.html")),
+    ("deepfield/undertow.json", include_str!("../presets/deepfield/undertow.json")),
+    ("deepfield/index.html", include_str!("../presets/deepfield/index.html")),
+    ("constellation/undertow.json", include_str!("../presets/constellation/undertow.json")),
+    ("constellation/index.html", include_str!("../presets/constellation/index.html")),
+    ("aurora/undertow.json", include_str!("../presets/aurora/undertow.json")),
+    ("aurora/index.html", include_str!("../presets/aurora/index.html")),
+    ("orrery/undertow.json", include_str!("../presets/orrery/undertow.json")),
+    ("orrery/index.html", include_str!("../presets/orrery/index.html")),
 ];
 
 pub fn unpack_presets() {

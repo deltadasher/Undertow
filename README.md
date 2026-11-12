@@ -77,6 +77,10 @@ read, and `livelyPropertyListener(name, value)` is called for every setting.
 | `procmon` | live system monitor: per-core CPU, history, memory, network, top processes | - |
 | `life` | Conway's Game of Life, cells coloured by age, re-seeds itself when it stalls | move to seed cells, click for a burst |
 | `flow` | particles following a drifting vector field, with trails | pointer is a whirlpool, click scatters |
+| `deepfield` | drifting star field in three depths, twinkling, with occasional meteors | the view leans toward the pointer, click for a meteor |
+| `constellation` | drifting points that link to every neighbour in reach, forming and dissolving figures | the pointer links to nearby stars, click pushes them apart |
+| `aurora` | two rayed aurora curtains over a starry sky | curtains lift toward the pointer, click for a surge |
+| `orrery` | bodies on Keplerian orbits with fading trails around a central star | the system leans toward the pointer, click launches a comet |
 
 ## Writing a wallpaper
 

@@ -1,0 +1,9 @@
+{
+  "name": "Orrery",
+  "entry": "index.html",
+  "props": {
+    "bodies": { "type": "slider", "text": "Bodies", "value": 8, "min": 3, "max": 14, "step": 1 },
+    "pace": { "type": "slider", "text": "Pace", "value": 4, "min": 1, "max": 10, "step": 1 },
+    "rings": { "type": "checkbox", "text": "Orbit guides", "value": true }
+  }
+}

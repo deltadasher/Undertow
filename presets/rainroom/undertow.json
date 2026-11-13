@@ -1,0 +1,22 @@
+{
+  "name": "Rainroom",
+  "entry": "index.html",
+  "props": {
+    "density": {
+      "type": "slider",
+      "text": "Rain",
+      "value": 100,
+      "min": 30,
+      "max": 220,
+      "step": 10
+    },
+    "speed": {
+      "type": "slider",
+      "text": "Rain speed",
+      "value": 1,
+      "min": 0.2,
+      "max": 2,
+      "step": 0.1
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "Fireflies",
+  "entry": "index.html",
+  "props": {
+    "count": {
+      "type": "slider",
+      "text": "Fireflies",
+      "value": 70,
+      "min": 20,
+      "max": 160,
+      "step": 10
+    },
+    "speed": {
+      "type": "slider",
+      "text": "Drift",
+      "value": 1,
+      "min": 0.2,
+      "max": 2,
+      "step": 0.1
+    },
+    "glow": {
+      "type": "checkbox",
+      "text": "Soft glow",
+      "value": true
+    }
+  }
+}

@@ -88,6 +88,14 @@ read, and `livelyPropertyListener(name, value)` is called for every setting.
 | `flock` | a murmuration of birds against a dusk or dawn sky | the pointer is a hawk they swerve around, click startles them |
 | `nebula` | slow clouds of gas over a star field (fragment shader) | clouds part around the pointer, click sends a pulse of light |
 | `ripples` | a pond in the rain, simulated with the wave equation and lit from its slope | moving drags a wake, click drops a stone |
+| `fireflies` | glowing fireflies over a moonlit meadow | move to nudge them away |
+| `tide` | layered waves meeting a sandy shore | move to disturb the water |
+| `loom` | gently shifting threads with a copper accent | move to bend the threads |
+| `dunes` | wind-sculpted desert under a low sun | - |
+| `eclipse` | a dark sun with a moving corona | - |
+| `rainroom` | rain on glass with distant city lights | - |
+
+These six scenes are written in Rust in `wallpaper-engine/` and compiled to WebAssembly. Their small HTML adapters connect the Rust renderer to the browser canvas and Undertow settings. To rebuild them, install the `wasm32-unknown-unknown` target, run `cargo build --release --target wasm32-unknown-unknown --manifest-path wallpaper-engine/Cargo.toml`, and copy the resulting `wallpaper-engine/target/wasm32-unknown-unknown/release/undertow_scenes.wasm` into each of the six preset folders as `scene.wasm`.
 
 ## Writing a wallpaper
 

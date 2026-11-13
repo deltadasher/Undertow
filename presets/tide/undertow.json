@@ -1,0 +1,24 @@
+{
+  "name": "Tide Pools",
+  "entry": "index.html",
+  "props": {
+    "foam": {
+      "type": "checkbox",
+      "text": "Foam lines",
+      "value": true
+    },
+    "pace": {
+      "type": "slider",
+      "text": "Pace",
+      "value": 1,
+      "min": 0.2,
+      "max": 2,
+      "step": 0.1
+    },
+    "warm": {
+      "type": "checkbox",
+      "text": "Warm sand",
+      "value": true
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "Dunes",
+  "entry": "index.html",
+  "props": {
+    "dust": {
+      "type": "checkbox",
+      "text": "Drifting dust",
+      "value": true
+    },
+    "speed": {
+      "type": "slider",
+      "text": "Wind",
+      "value": 1,
+      "min": 0.2,
+      "max": 2,
+      "step": 0.1
+    }
+  }
+}

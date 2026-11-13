@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rainroom</title>
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101919}canvas{display:block;width:100%;height:100%}</style>
+<canvas></canvas>
+<script>
+// Browser adapter only: all scene and animation calculations are in Rust.
+const scene=5, keys=["density", "speed"], values=[100, 1], canvas=document.querySelector('canvas'), ctx=canvas.getContext('2d');
+let engine=null, mx=-1, my=-1, elapsed=0, previous=0, pathEmpty=true;
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight} resize();
+addEventListener('resize',resize);
+addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY});
+addEventListener('mouseleave',()=>{mx=-1;my=-1});
+window.undertow?.on('prop',({name,value})=>{const i=keys.indexOf(name);if(i>=0){values[i]=value;if(engine)engine.set_prop(i,Number(value));}});
+const draw={
+ color:(r,g,b,a)=>{ctx.fillStyle=ctx.strokeStyle=`rgba(${r},${g},${b},${a})`},
+ rect:(x,y,w,h)=>ctx.fillRect(x,y,w,h),
+ circle:(x,y,r)=>{ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill()},
+ begin:()=>{ctx.beginPath();pathEmpty=true},
+ point:(x,y)=>{if(pathEmpty){ctx.moveTo(x,y);pathEmpty=false}else ctx.lineTo(x,y)},
+ fill:()=>{ctx.closePath();ctx.fill()},stroke:w=>{ctx.lineWidth=w;ctx.stroke()}
+};
+fetch('scene.wasm').then(r=>{if(!r.ok)throw Error(`Wallpaper engine: ${r.status}`);return r.arrayBuffer()}).then(bytes=>WebAssembly.instantiate(bytes,{draw})).then(({instance})=>{
+ engine=instance.exports;values.forEach((v,i)=>engine.set_prop(i,Number(v)));
+ function tick(now){if(previous)elapsed+=Math.min((now-previous)/1000,.05)*Number(values[1]);previous=now;engine.frame(scene,canvas.width,canvas.height,elapsed,mx,my);requestAnimationFrame(tick)}
+ requestAnimationFrame(tick);
+}).catch(error=>console.error('Unable to start wallpaper:',error));
+</script>
